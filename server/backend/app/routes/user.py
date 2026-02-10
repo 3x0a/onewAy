@@ -1,5 +1,5 @@
 import shutil
-from pathlib import Path, PurePath
+from pathlib import Path
 
 import yaml
 from fastapi import APIRouter, Depends, File, Response, UploadFile
@@ -20,7 +20,6 @@ from app.exceptions import (
     MissingRequiredFieldError,
     ModuleAlreadyExistsError,
     NoConfigFoundError,
-    NoFilesProvidedError,
     NoLocalModulesError,
     ResourceNotFoundError,
     VersionConflictError,
@@ -34,7 +33,11 @@ from app.schemas.general import BasicTaskResponse
 from app.schemas.user import *
 from app.schemas.user import RefreshTokenBasicInfo
 from app.services.auth import hash_password
-from app.services.user_actions import ModuleFromConfig
+from app.services.user_actions import (
+    ModuleFromConfig,
+    materialize_module_upload,
+    parse_module_upload,
+)
 from app.settings import settings
 from app.utils import get_local_modules_from_dir
 
@@ -244,7 +247,9 @@ async def user_modify_client_block(
 ):
     """Block a client by username."""
     try:
-        return await client_actions.update_client_block_status(client_username, True, db)
+        return await client_actions.update_client_block_status(
+            client_username, True, db
+        )
     except ValueError as e:
         raise ResourceNotFoundError(str(e)) from e
 
@@ -305,40 +310,8 @@ async def user_upload_modules(
     db: AsyncSession = Depends(get_db),
 ):
     """Upload a directory containing a module."""
-    if not files:
-        raise NoFilesProvidedError()
-
-    uploaded_files: list[tuple[PurePath, bytes]] = []
-    config_payload: bytes | None = None
-    config_path: PurePath | None = None
-
-    for upload in files:
-        if not upload.filename:
-            continue
-        normalized_name = upload.filename.replace("\\", "/")
-        file_path = PurePath(normalized_name)
-        payload = await upload.read()
-        uploaded_files.append((file_path, payload))
-        if file_path.name == "config.yaml":
-            config_payload = payload
-            config_path = file_path
-
-    if not config_payload or not config_path:
-        raise ConfigYAMLError("config.yaml not found")
-
-    try:
-        config = yaml.safe_load(config_payload.decode())
-        if not isinstance(config, dict):
-            raise ConfigYAMLError("Invalid config.yaml structure")
-        config_data = ModuleFromConfig.from_yaml_data(
-            config, error_on_unknown_binary_field=True
-        )
-    except YAMLError as e:
-        raise ConfigYAMLError("Invalid config.yaml") from e
-    except ConfigYAMLError as e:
-        raise e
-    except (MissingRequiredFieldError, CorruptedFieldError) as e:
-        raise ConfigYAMLError(str(e)) from e
+    upload_data = await parse_module_upload(files, error_on_unknown_binary_field=True)
+    config_data = upload_data.config_data
 
     try:
         result = await db.execute(select(Module).where(Module.name == config_data.name))
@@ -353,32 +326,9 @@ async def user_upload_modules(
     module_dir = module_root / config_data.name
     if module_dir.exists():
         raise ModuleAlreadyExistsError()
-
-    root_dir = config_path.parent
     module_root.mkdir(parents=True, exist_ok=True)
 
-    try:
-        module_dir.mkdir(parents=True, exist_ok=False)
-        base_resolved = module_dir.resolve()
-        for file_path, payload in uploaded_files:
-            try:
-                relative_path = file_path.relative_to(root_dir)
-            except ValueError:
-                continue
-
-            relative_fs_path = Path(*relative_path.parts)
-            if not relative_fs_path.parts:
-                continue
-
-            dest_path = (module_dir / relative_fs_path).resolve()
-            if base_resolved not in dest_path.parents and dest_path != base_resolved:
-                raise InvalidPathError()
-
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-            dest_path.write_bytes(payload)
-    except Exception:
-        shutil.rmtree(module_dir, ignore_errors=True)
-        log.error(f"Failed to delete directory {module_dir!r}")
+    materialize_module_upload(upload_data, module_dir)
 
     module = Module(
         name=config_data.name,
@@ -532,9 +482,61 @@ async def user_modules_update_local(
     return BasicTaskResponse()
 
 
+@router.post("/modules/update-remote", response_model=BasicTaskResponse)
+async def user_modules_update_remote(
+    files: list[UploadFile] = File(...),
+    _=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a remote module package and upsert it when the version changes."""
+    upload_data = await parse_module_upload(files, error_on_unknown_binary_field=True)
+    config_data = upload_data.config_data
+
+    try:
+        result = await db.execute(select(Module).where(Module.name == config_data.name))
+        existing = result.scalars().one_or_none()
+    except SQLAlchemyError as e:
+        raise DatabaseError(str(e)) from e
+
+    if existing and existing.version == config_data.version:
+        raise VersionConflictError("Remote module is up to date")
+
+    module_root = Path(settings.paths.modules_path)
+    module_dir = module_root / config_data.name
+    module_root.mkdir(parents=True, exist_ok=True)
+    materialize_module_upload(upload_data, module_dir, replace_existing=True)
+
+    if existing:
+        existing.description = config_data.description
+        existing.version = config_data.version
+        existing.windows = config_data.windows
+        existing.mac = config_data.mac
+        existing.linux = config_data.linux
+    else:
+        module = Module(
+            name=config_data.name,
+            description=config_data.description,
+            version=config_data.version,
+            windows=config_data.windows,
+            mac=config_data.mac,
+            linux=config_data.linux,
+        )
+        db.add(module)
+
+    try:
+        await db.commit()
+    except SQLAlchemyError as e:
+        await db.rollback()
+        raise DatabaseError(
+            f"Unable to save changes for {config_data.name} to the DB"
+        ) from e
+
+    return BasicTaskResponse()
+
+
 # - [X] /user/modules/install
 # - [X] /user/modules/update-local
-# - [ ] /user/modules/update-remote
+# - [X] /user/modules/update-remote
 # - [ ] /user/run/{module_name}
 # - [ ] /user/stop/{module_name}
 # - [ ] /user/metasploit/modules
