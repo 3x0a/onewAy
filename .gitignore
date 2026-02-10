@@ -1,0 +1,70 @@
+# OS / editors
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+.venv/
+venv/
+ENV/
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# Rust
+**/target/
+Cargo.lock
+
+# Node / React / TypeScript
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+.parcel-cache/
+.next/
+out/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+vite.svg
+
+# Framework caches
+.eslintcache
+.stylelintcache
+
+# Codex
+AGENTS.md
+
+# server/backend
+server/backend/config.toml

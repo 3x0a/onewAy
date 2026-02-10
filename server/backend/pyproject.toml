@@ -1,0 +1,20 @@
+[project]
+name = "onewAy-backend"
+requires-python = ">= 3.14"
+
+[tool.ruff]
+required-version = ">= 0.14.14"
+
+[tool.ruff.lint]
+extend-select = [
+    "B",
+    "I",
+    "SIM",
+    "UP",
+    "RUF",
+]
+ignore = ["B008", "F403", "F405"]
+per-file-ignores = { "alembic/env.py" = ["E402"] }
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]

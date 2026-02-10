@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+starlette
+sqlalchemy
+greenlet
+python-jose[cryptography]
+argon2-cffi
+asyncpg
+alembic
+pymetasploit3
+pexpect
+tqdm
+PyYAML
