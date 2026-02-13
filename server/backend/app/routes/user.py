@@ -12,6 +12,7 @@ from yaml.error import YAMLError
 import app.services.client_actions as client_actions
 from app.dependencies import get_current_user, get_db
 from app.exceptions import (
+    ClientNotAliveError,
     ClientNotFoundError,
     ConfigYAMLError,
     CorruptedFieldError,
@@ -33,6 +34,7 @@ from app.schemas.general import BasicTaskResponse
 from app.schemas.user import *
 from app.schemas.user import RefreshTokenBasicInfo
 from app.services.auth import hash_password
+from app.services.module_manager import module_manager
 from app.services.user_actions import (
     ModuleFromConfig,
     materialize_module_upload,
@@ -531,6 +533,26 @@ async def user_modules_update_remote(
             f"Unable to save changes for {config_data.name} to the DB"
         ) from e
 
+    return BasicTaskResponse()
+
+
+@router.post("/run/{module_name}", response_model=BasicTaskResponse)
+async def user_run_module(
+    module_name: str,
+    run_info: UserRunModuleRequest,
+    _=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Client).where(Client.username == run_info.client_username)
+    )
+    client = result.scalar_one_or_none()
+    if not client:
+        raise ClientNotFoundError()
+    if not client.alive:
+        raise ClientNotAliveError()
+
+    await module_manager.run_module(module_name, client.uuid)
     return BasicTaskResponse()
 
 

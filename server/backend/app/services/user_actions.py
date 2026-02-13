@@ -30,6 +30,7 @@ class ModuleUploadData:
 
 class ModuleFromConfig:
     """Validated module metadata parsed from a module config.yaml file."""
+
     name: str
     description: str | None
     version: str
@@ -185,5 +186,7 @@ def materialize_module_upload(
         raise
     except Exception as e:
         shutil.rmtree(module_dir, ignore_errors=True)
-        log.error("Failed to write uploaded module files for %r", upload_data.config_data.name)
+        log.error(
+            "Failed to write uploaded module files for %r", upload_data.config_data.name
+        )
         raise ConfigYAMLError("Failed to save uploaded module files") from e

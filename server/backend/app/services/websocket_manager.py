@@ -17,6 +17,7 @@ log = get_logger()
 
 class WebsocketManager:
     """Track active client websockets and send payloads by client UUID."""
+
     def __init__(self):
         self.connections: dict[UUID, WebSocket] = {}
 
@@ -61,3 +62,6 @@ async def handle_message(
             await websocket.send_json(
                 {"type": "error", "message": "Unknown message type"}
             )
+
+
+websocket_manager = WebsocketManager()

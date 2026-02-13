@@ -166,6 +166,14 @@ class VersionConflictError(AppHTTPError):
         super().__init__(msg=msg, detail=msg)
 
 
+class ClientNotAliveError(AppHTTPError):
+    status_code = 400
+    detail = "The requested client is not alive"
+
+    def __init__(self):
+        super().__init__(msg=self.detail, detail=self.detail)
+
+
 class WebsocketMessageInvalidDataType(AppWebsocketError):
     def __init__(self):
         super().__init__("Invalid websocket message data type")
@@ -180,6 +188,12 @@ class MissingRequiredFieldError(Exception):
 class CorruptedFieldError(Exception):
     def __init__(self, field: str):
         self.msg = f"Corrupted field {field}"
+        super().__init__(self.msg)
+
+
+class NoWebsocketManagerSetError(Exception):
+    def __init__(self):
+        self.msg = "No Websocket Manager is set for Module Manager"
         super().__init__(self.msg)
 
 
